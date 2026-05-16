@@ -7,10 +7,10 @@ from tkinter import scrolledtext
 import ECDSA
 
 # Dedicated CA Keypair
-CA_PRIVATE_KEY = 1
+CA_PRIVATE_KEY = 49806086994081315768535503621314805076665862072723885913589355959401176605073
 CA_PUBLIC_KEY = (
-    0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-    0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
+    32167098971702862536868029676832383352378452658998998980548421460672022530668,
+    45303739504553886989148950397054188194730681477689363086709449507248545053226
 )
 
 REGISTERED_KEYS = {} 
@@ -113,18 +113,21 @@ class ServerApp:
             if req_type == "issue_cert":
                 user_id = request["user_id"]
                 elgammal_pub = request["elgammal_pub"]
-                
-                expiration = time.time() + (3600) 
-                cert_body = f"{user_id}:{elgammal_pub[0]}:{elgammal_pub[1]}:{elgammal_pub[2]}:{expiration}"
+                ecdsa_pub = request["ecdsa_pub"]  
+
+                expiration = time.time() + 3600
+    
+                cert_body = f"{user_id}:{elgammal_pub[0]}:{elgammal_pub[1]}:{elgammal_pub[2]}:{ecdsa_pub[0]}:{ecdsa_pub[1]}:{expiration}"
                 signature = ECDSA.sign(CA_PRIVATE_KEY, cert_body)
-                
+
                 certificate = {
                     "user_id": user_id,
                     "elgammal_pub": elgammal_pub,
+                    "ecdsa_pub": ecdsa_pub,       
                     "expiration": expiration,
                     "signature": [signature[0], signature[1]]
                 }
-                
+
                 REGISTERED_KEYS[user_id] = elgammal_pub
                 self.log_ca(f"Certificate issued for '{user_id}'. Identity verified.", "success")
                 conn.sendall(json.dumps(certificate).encode('utf-8'))

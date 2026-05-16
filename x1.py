@@ -11,18 +11,19 @@ import chacha20
 import elgammal
 import ECDSA
 import blowfish
+import hashlib
 
 SERVER_IP = "127.0.0.1"      
 SERVER_PORT = 5000           
 PEER_PORT = 6001             
 
 CA_PUBLIC_KEY = (
-    0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-    0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
+    32167098971702862536868029676832383352378452658998998980548421460672022530668,
+    45303739504553886989148950397054188194730681477689363086709449507248545053226
 )
 
 class UserXApp:
-    def __init__(self, root):
+    def __init__(self, root, vault_key):
         self.root = root
         self.root.title("Secure Comms Link: Host X")
         self.root.geometry("560x720")
@@ -34,11 +35,12 @@ class UserXApp:
         self.my_cert = None
         self.session_key = None
         self.peer_elg_pub = None
+        self.peer_ecdsa_pub = None
         
         self.rotation_interval_ms = 60000
         self.timer_handle = None
 
-        self.bf_vault = blowfish.Blowfish("local_vault_key_x")
+        self.bf_vault = blowfish.Blowfish(vault_key)
         if not os.path.exists("chat_history_x.bin"):
             open("chat_history_x.bin", "wb").close()
 
@@ -132,9 +134,10 @@ class UserXApp:
         )
         self.send_btn.pack(side=tk.LEFT, padx=(8, 0))
 
-        self.get_certificate()
+        
         self.display_message("System", "Ready. Standing by for User Y...")
         threading.Thread(target=self.start_peer_listener, daemon=True).start()
+        self.get_certificate()
 
     def update_status(self, text, color, bg):
         self.root.after(0, lambda: self.badge.config(text=text, fg=color, bg=bg))
@@ -168,7 +171,7 @@ class UserXApp:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((SERVER_IP, SERVER_PORT))
-            req = {"type": "issue_cert", "user_id": self.my_id, "elgammal_pub": self.elg_pub}
+            req = {"type": "issue_cert", "user_id": self.my_id, "elgammal_pub": self.elg_pub, "ecdsa_pub": [self.ecdsa_pub[0], self.ecdsa_pub[1]]}
             s.sendall(json.dumps(req).encode('utf-8'))
             self.my_cert = json.loads(s.recv(4096).decode('utf-8'))
             s.close()
@@ -199,13 +202,14 @@ class UserXApp:
             peer_cert_data = self.recv_all(cert_size).decode('utf-8')
             y_cert = json.loads(peer_cert_data)
 
-            cert_body = f"{y_cert['user_id']}:{y_cert['elgammal_pub'][0]}:{y_cert['elgammal_pub'][1]}:{y_cert['elgammal_pub'][2]}:{y_cert['expiration']}"
+            cert_body = f"{y_cert['user_id']}:{y_cert['elgammal_pub'][0]}:{y_cert['elgammal_pub'][1]}:{y_cert['elgammal_pub'][2]}:{y_cert['ecdsa_pub'][0]}:{y_cert['ecdsa_pub'][1]}:{y_cert['expiration']}"
             sig = (y_cert['signature'][0], y_cert['signature'][1])
-            
+
             if not ECDSA.verify(CA_PUBLIC_KEY, cert_body, sig) or time.time() > y_cert['expiration']:
                 raise ValueError("Verification failed: Compromised cert parameters.")
 
             self.peer_elg_pub = tuple(y_cert['elgammal_pub'])
+            self.peer_ecdsa_pub = tuple(y_cert['ecdsa_pub']) 
             self.session_key = chacha20.generate_key()
             
             key_int = int.from_bytes(self.session_key, "big")
@@ -216,10 +220,10 @@ class UserXApp:
             packet_bytes = json.dumps(key_packet).encode('utf-8')
             self.peer_conn.sendall(struct.pack(">I", len(packet_bytes)) + packet_bytes)
 
-            # --- KEY ESCROW BLOCK REMOVED ---
+           
             
             self.update_status("TUNNEL LINKED", "#10B981", "#064E3B")
-            self.display_message("System", f"Handshake Secured. Tunnel active (No Escrow).")
+            self.display_message("System", f"Handshake Secured. Tunnel active ")
             
             self.schedule_next_rotation()
         except Exception as e:
@@ -260,12 +264,12 @@ class UserXApp:
 
             wire_format = {
                 "nonce": nonce.hex(), "payload": encrypted_payload.hex(),
-                "sender_ecdsa_pub": [self.ecdsa_pub[0], self.ecdsa_pub[1]], "signature": [signature[0], signature[1]]
+                "signature": [signature[0], signature[1]]
             }
             wire_bytes = json.dumps(wire_format).encode('utf-8')
             self.peer_conn.sendall(struct.pack(">I", len(wire_bytes)) + wire_bytes)
             
-            # --- ROTATION ESCROW BLOCK REMOVED ---
+            
 
             self.session_key = new_key
             self.display_message("System", "Dynamic key cycle complete. Local tunnel updated.")
@@ -296,8 +300,8 @@ class UserXApp:
 
         wire_format = {
             "nonce": nonce.hex(), "payload": encrypted_payload.hex(),
-            "sender_ecdsa_pub": [self.ecdsa_pub[0], self.ecdsa_pub[1]], "signature": [signature[0], signature[1]]
-        }
+            "signature": [signature[0], signature[1]]
+        }   
         
         try:
             wire_bytes = json.dumps(wire_format).encode('utf-8')
@@ -323,12 +327,12 @@ class UserXApp:
                 
                 nonce = bytes.fromhex(packet["nonce"])
                 encrypted_payload = bytes.fromhex(packet["payload"])
-                sender_pub = tuple(packet["sender_ecdsa_pub"])
-                sig = tuple(packet["signature"])
+                sig = tuple(packet["signature"])            
 
                 decrypted_json = chacha20.decrypt(encrypted_payload, self.session_key, nonce).decode('utf-8')
-                
-                if not ECDSA.verify(sender_pub, decrypted_json, sig):
+
+
+                if not ECDSA.verify(self.peer_ecdsa_pub, decrypted_json, sig):
                     self.display_message("SECURITY ERROR", "Corrupt frames discarded.")
                     continue
 
@@ -358,6 +362,9 @@ class UserXApp:
         self.display_message("System", "Tunnel drop.")
 
 if __name__ == "__main__":
+    import hashlib
+    _vault_pass = input("Enter vault password for User X: ")
+    _vault_key = hashlib.sha256(_vault_pass.encode()).hexdigest()
     root = tk.Tk()
-    app = UserXApp(root)
+    app = UserXApp(root, _vault_key)
     root.mainloop()
