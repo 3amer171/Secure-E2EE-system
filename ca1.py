@@ -117,8 +117,10 @@ class ServerApp:
 
                 expiration = time.time() + 3600
     
-                cert_body = f"{user_id}:{elgammal_pub[0]}:{elgammal_pub[1]}:{elgammal_pub[2]}:{ecdsa_pub[0]}:{ecdsa_pub[1]}:{expiration}"
+                cert_body = f"{user_id}:{int(elgammal_pub[0])}:{int(elgammal_pub[1])}:{int(elgammal_pub[2])}:{int(ecdsa_pub[0])}:{int(ecdsa_pub[1])}:{expiration}"
+                print("CERT_BODY_CA:", cert_body)
                 signature = ECDSA.sign(CA_PRIVATE_KEY, cert_body)
+                print("SIGNATURE:", signature)
 
                 certificate = {
                     "user_id": user_id,

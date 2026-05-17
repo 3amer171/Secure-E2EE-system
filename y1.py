@@ -16,7 +16,7 @@ import hashlib
 SERVER_IP = "127.0.0.1"      
 SERVER_PORT = 5000           
 PEER_PORT = 6001             
-PEER_IP = "127.0.0.1"        
+PEER_IP = "10.107.36.184"        
 
 CA_PUBLIC_KEY = (
     32167098971702862536868029676832383352378452658998998980548421460672022530668,
@@ -230,7 +230,7 @@ class UserYApp:
         bytes_to_send = json.dumps(self.my_cert).encode('utf-8')
         self.peer_conn.sendall(struct.pack(">I", len(bytes_to_send)) + bytes_to_send)
 
-        cert_body = f"{x_cert['user_id']}:{x_cert['elgammal_pub'][0]}:{x_cert['elgammal_pub'][1]}:{x_cert['elgammal_pub'][2]}:{x_cert['ecdsa_pub'][0]}:{x_cert['ecdsa_pub'][1]}:{x_cert['expiration']}"
+        cert_body = f"{x_cert['user_id']}:{int(x_cert['elgammal_pub'][0])}:{int(x_cert['elgammal_pub'][1])}:{int(x_cert['elgammal_pub'][2])}:{int(x_cert['ecdsa_pub'][0])}:{int(x_cert['ecdsa_pub'][1])}:{x_cert['expiration']}"
         sig = (x_cert['signature'][0], x_cert['signature'][1])
 
         if not ECDSA.verify(CA_PUBLIC_KEY, cert_body, sig) or time.time() > x_cert['expiration']:
@@ -245,7 +245,7 @@ class UserYApp:
         packet = json.loads(key_packet_data)
         
         decrypted_key_int = elgammal.decrypt(self.elg_priv, (packet["c1"], packet["c2"]))
-        self.session_key = decrypted_key_int.to_bytes(32, "big")
+        self.session_key = decrypted_key_int.to_bytes(32, "big")[-32:]
 
         self.update_badge("TUNNEL LINKED", "#10B981", "#064E3B")
         self.display_message("System", f"Channel secured. Key received from Host.")
@@ -313,7 +313,7 @@ class UserYApp:
                 if frame["type"] == "key_rotation":
                     control_info = json.loads(frame["content"])
                     decrypted_key_int = elgammal.decrypt(self.elg_priv, (control_info["c1"], control_info["c2"]))
-                    self.session_key = decrypted_key_int.to_bytes(32, "big")
+                    self.session_key = decrypted_key_int.to_bytes(32, "big")[-32:]
                     self.display_message("System", f"In-band session key shift executed.")
                     continue
 

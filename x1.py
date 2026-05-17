@@ -13,7 +13,7 @@ import ECDSA
 import blowfish
 import hashlib
 
-SERVER_IP = "127.0.0.1"      
+SERVER_IP = ""      
 SERVER_PORT = 5000           
 PEER_PORT = 6001             
 
