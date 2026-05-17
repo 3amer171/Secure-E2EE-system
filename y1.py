@@ -13,10 +13,10 @@ import ECDSA
 import blowfish
 import hashlib
 
-SERVER_IP = "127.0.0.1"      
+SERVER_IP = "server's ip address"      
 SERVER_PORT = 5000           
 PEER_PORT = 6001             
-PEER_IP = "10.107.36.184"        
+PEER_IP = "client ip address"        
 
 CA_PUBLIC_KEY = (
     32167098971702862536868029676832383352378452658998998980548421460672022530668,

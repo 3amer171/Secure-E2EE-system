@@ -13,7 +13,7 @@ import ECDSA
 import blowfish
 import hashlib
 
-SERVER_IP = ""      
+SERVER_IP = "server's ip address"      
 SERVER_PORT = 5000           
 PEER_PORT = 6001             
 
@@ -202,17 +202,24 @@ class UserXApp:
             peer_cert_data = self.recv_all(cert_size).decode('utf-8')
             y_cert = json.loads(peer_cert_data)
 
-            cert_body = f"{y_cert['user_id']}:{y_cert['elgammal_pub'][0]}:{y_cert['elgammal_pub'][1]}:{y_cert['elgammal_pub'][2]}:{y_cert['ecdsa_pub'][0]}:{y_cert['ecdsa_pub'][1]}:{y_cert['expiration']}"
+            cert_body = f"{y_cert['user_id']}:{int(y_cert['elgammal_pub'][0])}:{int(y_cert['elgammal_pub'][1])}:{int(y_cert['elgammal_pub'][2])}:{int(y_cert['ecdsa_pub'][0])}:{int(y_cert['ecdsa_pub'][1])}:{y_cert['expiration']}"
             sig = (y_cert['signature'][0], y_cert['signature'][1])
 
+            print("CERT_BODY_X:", cert_body)
+            print("SIG:", sig)
+            print("VERIFY RESULT:", ECDSA.verify(CA_PUBLIC_KEY, cert_body, sig))
+            print("EXPIRY OK:", time.time() < y_cert['expiration'])
             if not ECDSA.verify(CA_PUBLIC_KEY, cert_body, sig) or time.time() > y_cert['expiration']:
-                raise ValueError("Verification failed: Compromised cert parameters.")
+             raise ValueError("Verification failed: Compromised cert parameters.")
 
             self.peer_elg_pub = tuple(y_cert['elgammal_pub'])
             self.peer_ecdsa_pub = tuple(y_cert['ecdsa_pub']) 
             self.session_key = chacha20.generate_key()
             
-            key_int = int.from_bytes(self.session_key, "big")
+            p = self.peer_elg_pub[0]
+            key_int = int.from_bytes(self.session_key, "big") % (p - 1)
+            if key_int == 0:
+                key_int = 1
             c1, c2 = elgammal.encrypt(self.peer_elg_pub, key_int)
             
             token_id = int(time.time())
@@ -251,9 +258,11 @@ class UserXApp:
     def initiate_key_rotation(self):
         try:
             new_key = chacha20.generate_key()
-            key_int = int.from_bytes(new_key, "big")
+            p = self.peer_elg_pub[0]
+            key_int = int.from_bytes(new_key, "big") % (p - 1)
+            if key_int == 0:
+              key_int = 1
             c1, c2 = elgammal.encrypt(self.peer_elg_pub, key_int)
-            token_id = int(time.time())
             
             control_content = json.dumps({"c1": c1, "c2": c2, "session_id": token_id})
             raw_package = json.dumps({"type": "key_rotation", "content": control_content, "msg_id": f"ROT_{time.time()}"})
@@ -340,7 +349,7 @@ class UserXApp:
                 if frame["type"] == "key_rotation":
                     control_info = json.loads(frame["content"])
                     decrypted_key_int = elgammal.decrypt(self.elg_priv, (control_info["c1"], control_info["c2"]))
-                    self.session_key = decrypted_key_int.to_bytes(32, "big")
+                    self.session_key = decrypted_key_int.to_bytes(32, "big")[-32:]
                     self.display_message("System", f"In-band rotation active. New session key applied.")
                     continue
 
